@@ -8,7 +8,7 @@ module.exports = async (req, res) => {
     }
 
    
-    const AGENT_SECRET_KEY = process.env.AGENT_SECRET_KEY || 'YourSuperSecretKey123!@#';
+    const AGENT_SECRET_KEY = process.env.AGENT_SECRET_KEY || '1234567';
     const requestKey = req.headers['x-agent-key'];
     if (requestKey !== AGENT_SECRET_KEY) {
         return res.status(403).json({ success: false, message: 'Forbidden: Invalid Agent Key' });
