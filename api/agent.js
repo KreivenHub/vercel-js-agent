@@ -2,7 +2,7 @@ const axios = require('axios');
 
 
 module.exports = async (req, res) => {
-    // Проверка "прогрева"
+
     if (!req.query.id && !req.query.format) {
         return res.status(200).json({ status: 'alive', timestamp: Date.now() });
     }
@@ -64,7 +64,7 @@ async function handle_mp3youtube_cc(videoId, requestedFormat) {
 
         const convertResponse = await axios.post(converterUrl, new URLSearchParams(postData).toString(), {
             headers: { ...converterHeaders, 'Content-Type': 'application/x-www-form-urlencoded' },
-            timeout: 60000 // 60 секунд
+            timeout: 60000 
         });
         
         const resultData = convertResponse.data;
