@@ -1,19 +1,18 @@
 const axios = require('axios');
 const cheerio = require('cheerio');
 
-// --- Управление донорами ---
-// Глобальный счетчик для поочередного выбора
+
 let requestCounter = 0;
 
-// --- Главная функция, которую выполняет Vercel ---
+
 module.exports = async (req, res) => {
-    // Проверка "прогрева"
+
     if (!req.query.id && !req.query.format) {
         return res.status(200).json({ status: 'alive', timestamp: Date.now() });
     }
 
-    // Проверка секретного ключа
-    const AGENT_SECRET_KEY = process.env.AGENT_SECRET_KEY || 'YourSuperSecretKey123!@#';
+
+    const AGENT_SECRET_KEY = process.env.AGENT_SECRET_KEY || '1234567';
     const requestKey = req.headers['x-agent-key'];
     if (requestKey !== AGENT_SECRET_KEY) {
         return res.status(403).json({ success: false, message: 'Forbidden: Invalid Agent Key' });
@@ -24,7 +23,7 @@ module.exports = async (req, res) => {
         return res.status(400).json({ success: false, message: 'Error: Missing video ID or format.' });
     }
 
-    // --- Логика выбора донора по очереди ---
+   
     const donorHandlers = [
         handle_genyoutube_online,
         handle_mp3youtube_cc,
@@ -32,7 +31,7 @@ module.exports = async (req, res) => {
     
     const handlerIndex = requestCounter % donorHandlers.length;
     const selectedHandler = donorHandlers[handlerIndex];
-    requestCounter++; // Увеличиваем счетчик для следующего запроса
+    requestCounter++; 
 
     try {
         const result = await selectedHandler(videoId, requestedFormat);
@@ -43,9 +42,7 @@ module.exports = async (req, res) => {
     }
 };
 
-// ==================================================================================
-// --- ОБРАБОТЧИК 1: genyoutube.online (новый, переписанный на JS) ---
-// ==================================================================================
+
 async function handle_genyoutube_online(videoId, requestedFormat) {
     const youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
     const headers = {
@@ -57,7 +54,7 @@ async function handle_genyoutube_online(videoId, requestedFormat) {
     };
 
     try {
-        // === Шаг 1: Анализ видео ===
+      
         const analyzeUrl = 'http://genyoutube.online/mates/en/analyze/ajax';
         const analyzePayload = new URLSearchParams({ url: youtubeUrl, ajax: '1', lang: 'en', platform: 'youtube' });
         const res1 = await axios.post(analyzeUrl, analyzePayload.toString(), { headers, timeout: 60000 });
@@ -67,7 +64,7 @@ async function handle_genyoutube_online(videoId, requestedFormat) {
             return { success: false, message: 'Donor Error (genyoutube): Failed at Step 1.', details: dataStep1 };
         }
 
-        // === Шаг 2 и 3: Парсинг HTML и поиск нужного формата ===
+        
         const $ = cheerio.load(dataStep1.result);
         const buttons = $('button[onclick^="download("]');
         let foundFormatData = null;
@@ -76,7 +73,7 @@ async function handle_genyoutube_online(videoId, requestedFormat) {
             const onclickAttr = $(button).attr('onclick');
             const paramsMatch = onclickAttr.match(/download\((.*)\)/s);
             if (paramsMatch && paramsMatch[1]) {
-                // Простой и надежный парсинг параметров в кавычках
+               
                 const params = paramsMatch[1].split(',').map(p => p.trim().replace(/^'|'$/g, ''));
                 if (params.length === 7) {
                     const formatData = {
@@ -99,7 +96,7 @@ async function handle_genyoutube_online(videoId, requestedFormat) {
             return { success: false, message: `Donor Error (genyoutube): Format (${requestedFormat}) not found.` };
         }
 
-        // === Шаг 4 и 5: Запрос на конвертацию ===
+        
         const convertUrl = `http://genyoutube.online/mates/en/convert?id=${foundFormatData.hash_id}`;
         const convertPayload = new URLSearchParams({
             id: foundFormatData.hash_id, platform: 'youtube', url: foundFormatData.youtube_url,
@@ -122,9 +119,7 @@ async function handle_genyoutube_online(videoId, requestedFormat) {
     }
 }
 
-// ==================================================================================
-// --- ОБРАБОТЧИК 2: api.mp3youtube.cc (y2meta) (без изменений) ---
-// ==================================================================================
+
 async function handle_mp3youtube_cc(videoId, requestedFormat) {
     const youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
     const commonHeaders = {
