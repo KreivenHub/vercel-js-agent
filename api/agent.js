@@ -1,5 +1,6 @@
 const url = require('url');
 
+
 // Полная база из 50 элитных User-Agent'ов (Июнь 2026)
 const USER_AGENTS = [
   // --- WINDOWS ---
