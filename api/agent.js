@@ -1,15 +1,11 @@
-<?php if($show_vid_embed): ?>
-                <div class="embed-responsive embed-responsive-16by9">
-                    <iframe 
-  src="https://www.youtube.com/embed/<?php echo htmlspecialchars($video_data['videoId']); ?>?rel=0&modestbranding=1" 
-  frameborder="0" 
-  allowfullscreen
-  width="560" 
-  height="315"
-  referrerpolicy="strict-origin-when-cross-origin">
-</iframe></div>
-                <br>
-            <?php endif; ?>
+const url = require('url');
+
+const USER_AGENTS = [
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.7778.217 Safari/537.36',
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.7778.217 Safari/537.36',
+  'Mozilla/5.0 (Linux; Android 16) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.7778.217 Mobile Safari/537.36',
+  'Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.2 Mobile/15E148 Safari/604.1'
+];
 
 const LANGUAGES = ['en-US,en;q=0.9', 'es-ES,es;q=0.9,en;q=0.8', 'fr-FR,fr;q=0.9', 'de-DE,de;q=0.9'];
 const WORKING_DONOR = { origin: 'https://y2down.cc', referer: 'https://y2down.cc/' };
@@ -29,14 +25,23 @@ function getIdentity(seedString) {
   };
 }
 
-// ИСПРАВЛЕНО: Стандартный экспорт CommonJS для Vercel Node.js
 module.exports = async function handler(req, res) {
+  // Нативная отправка JSON для чистого Node.js на Vercel
+  const sendJson = (status, data) => {
+    res.setHeader('Content-Type', 'application/json');
+    res.statusCode = status;
+    res.end(JSON.stringify(data));
+  };
+
   const requestKey = req.headers['x-agent-key'];
   if (requestKey !== AGENT_SECRET_KEY) {
-    return res.status(403).json({ success: false, message: 'Forbidden' });
+    return sendJson(403, { success: false, message: 'Forbidden' });
   }
 
-  const { id, format, progress_url } = req.query;
+  // Правильный парсинг GET-параметров в Node.js
+  const query = url.parse(req.url, true).query;
+  const { id, format, progress_url } = query;
+  
   const identity = getIdentity(id || progress_url || 'unknown');
 
   const headers = {
@@ -57,15 +62,15 @@ module.exports = async function handler(req, res) {
       const statusText = data?.text?.toLowerCase() || '';
 
       if (data?.download_url && data.download_url !== "") {
-        return res.status(200).json({ success: true, status: 'finished', download_url: data.download_url });
+        return sendJson(200, { success: true, status: 'finished', download_url: data.download_url });
       } else if (statusText === 'error' || (data?.success === 1 && !data?.download_url)) {
-        return res.status(200).json({ success: false, status: 'error', message: 'Donor Error' });
+        return sendJson(200, { success: false, status: 'error', message: 'Donor Error' });
       }
-      return res.status(200).json({ success: true, status: 'processing', progress: data?.progress || 0 });
+      return sendJson(200, { success: true, status: 'processing', progress: data?.progress || 0 });
     }
 
     if (!id || !format) {
-      return res.status(200).json({ status: 'alive' });
+      return sendJson(200, { status: 'alive' });
     }
 
     const youtubeUrl = `https://www.youtube.com/watch?v=${id}`;
@@ -75,12 +80,12 @@ module.exports = async function handler(req, res) {
     const data = await response.json();
 
     if (!data || !data.success || !data.id || !data.progress_url) {
-      return res.status(200).json({ success: false, message: 'Init Error', details: data });
+      return sendJson(200, { success: false, message: 'Init Error', details: data });
     }
 
-    return res.status(200).json({ success: true, status: 'started', progress_url: data.progress_url });
+    return sendJson(200, { success: true, status: 'started', progress_url: data.progress_url });
 
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    return sendJson(500, { success: false, message: error.message });
   }
 };
