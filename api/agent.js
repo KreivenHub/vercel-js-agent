@@ -1,6 +1,5 @@
 const url = require('url');
 
-
 // Полная база из 50 элитных User-Agent'ов (Июнь 2026)
 const USER_AGENTS = [
   // --- WINDOWS ---
@@ -65,23 +64,7 @@ const USER_AGENTS = [
   'Mozilla/5.0 (iPad; CPU OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1'
 ];
 
-const LANGUAGES = [
-  'en-US,en;q=0.9',
-  'en-GB,en;q=0.9,en-US;q=0.8',
-  'es-ES,es;q=0.9,en;q=0.8',
-  'es-MX,es;q=0.9,en-US;q=0.8,en;q=0.7',
-  'fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7',
-  'de-DE,de;q=0.9,en-US;q=0.8,en;q=0.7',
-  'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
-  'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
-  'zh-CN,zh;q=0.9,en;q=0.8',
-  'ja-JP,ja;q=0.9,en-US;q=0.8,en;q=0.7',
-  'it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7',
-  'id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7',
-  'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7',
-  'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7'
-];
-
+const LANGUAGES = ['en-US,en;q=0.9', 'es-ES,es;q=0.9,en;q=0.8', 'fr-FR,fr;q=0.9', 'de-DE,de;q=0.9'];
 const WORKING_DONOR = { origin: 'https://y2down.cc', referer: 'https://y2down.cc/' };
 const API_KEY = 'dfcb6d76f2f6a9894gjkege8a4ab232222';
 const AGENT_SECRET_KEY = '1234567';
@@ -99,8 +82,22 @@ function getIdentity(seedString) {
   };
 }
 
+// 1. ФУНКЦИЯ FETCH С ЖЕСТКИМ ТАЙМАУТОМ (Спасет Vercel от зависаний)
+const fetchWithTimeout = async (targetUrl, options, timeoutMs = 7500) => {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  
+  try {
+    const response = await fetch(targetUrl, { ...options, signal: controller.signal });
+    clearTimeout(timeoutId);
+    return response;
+  } catch (error) {
+    clearTimeout(timeoutId);
+    throw error; // Прокидываем ошибку (AbortError) дальше
+  }
+};
+
 module.exports = async function handler(req, res) {
-  // Функция отправки ответа с жестким запретом на кэширование
   const sendJson = (status, data) => {
     try {
       res.setHeader('Content-Type', 'application/json');
@@ -120,7 +117,6 @@ module.exports = async function handler(req, res) {
 
     const query = url.parse(req.url || '', true).query || {};
     const { id, format, progress_url } = query;
-    
     const identity = getIdentity(id || progress_url || 'unknown');
 
     const fetchHeaders = {
@@ -134,18 +130,33 @@ module.exports = async function handler(req, res) {
       'Sec-Fetch-Site': 'cross-site'
     };
 
+    // 2. БЕЗОПАСНЫЙ ПАРСЕР С ТАЙМАУТОМ
     const fetchSafeJson = async (targetUrl) => {
-      const resp = await fetch(targetUrl, { headers: fetchHeaders });
-      const text = await resp.text();
       try {
-        return { ok: true, json: JSON.parse(text) };
+        const resp = await fetchWithTimeout(targetUrl, { headers: fetchHeaders }, 7500);
+        const text = await resp.text();
+        try {
+          return { ok: true, json: JSON.parse(text) };
+        } catch (err) {
+          return { ok: false, type: 'html', raw: text.substring(0, 200) };
+        }
       } catch (err) {
-        return { ok: false, raw: text.substring(0, 200) };
+        if (err.name === 'AbortError' || err.type === 'aborted') {
+          return { ok: false, type: 'timeout' };
+        }
+        return { ok: false, type: 'network', raw: err.message };
       }
     };
 
+    // === ОБРАБОТКА ПОЛЛИНГА ===
     if (progress_url) {
       const result = await fetchSafeJson(progress_url);
+      
+      // Если поймали ТАЙМАУТ - видео просто долго грузится. Говорим фронтенду "Ждем дальше".
+      if (!result.ok && result.type === 'timeout') {
+         return sendJson(200, { success: true, status: 'processing', progress: null });
+      }
+      
       if (!result.ok) {
         return sendJson(200, { success: false, status: 'error', message: 'Donor blocked request' });
       }
@@ -161,16 +172,17 @@ module.exports = async function handler(req, res) {
       return sendJson(200, { success: true, status: 'processing', progress: data?.progress || 0 });
     }
 
-    if (!id || !format) {
-      return sendJson(200, { status: 'alive' });
-    }
+    // === ОБРАБОТКА СТАРТА ===
+    if (!id || !format) return sendJson(200, { status: 'alive' });
 
     const youtubeUrl = `https://www.youtube.com/watch?v=${id}`;
     const apiUrl = `https://p.savenow.to/api/v2/download?format=${format}&url=${encodeURIComponent(youtubeUrl)}&apikey=${API_KEY}`;
 
     const result = await fetchSafeJson(apiUrl);
+    
     if (!result.ok) {
-      return sendJson(200, { success: false, message: 'Init blocked by donor' });
+        // Если таймаут на самом старте - значит донор лег.
+        return sendJson(200, { success: false, message: result.type === 'timeout' ? 'Donor is too slow to start' : 'Init blocked' });
     }
 
     const data = result.json;
