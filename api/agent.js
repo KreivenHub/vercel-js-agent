@@ -1,9 +1,15 @@
-const USER_AGENTS = [
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.7778.217 Safari/537.36',
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.7778.217 Safari/537.36',
-  'Mozilla/5.0 (Linux; Android 16) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.7778.217 Mobile Safari/537.36',
-  'Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.2 Mobile/15E148 Safari/604.1'
-];
+<?php if($show_vid_embed): ?>
+                <div class="embed-responsive embed-responsive-16by9">
+                    <iframe 
+  src="https://www.youtube.com/embed/<?php echo htmlspecialchars($video_data['videoId']); ?>?rel=0&modestbranding=1" 
+  frameborder="0" 
+  allowfullscreen
+  width="560" 
+  height="315"
+  referrerpolicy="strict-origin-when-cross-origin">
+</iframe></div>
+                <br>
+            <?php endif; ?>
 
 const LANGUAGES = ['en-US,en;q=0.9', 'es-ES,es;q=0.9,en;q=0.8', 'fr-FR,fr;q=0.9', 'de-DE,de;q=0.9'];
 const WORKING_DONOR = { origin: 'https://y2down.cc', referer: 'https://y2down.cc/' };
