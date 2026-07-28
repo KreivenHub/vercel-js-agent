@@ -26,45 +26,61 @@ function getIdentity(seedString) {
 }
 
 module.exports = async function handler(req, res) {
-  // Нативная отправка JSON для чистого Node.js на Vercel
   const sendJson = (status, data) => {
-    res.setHeader('Content-Type', 'application/json');
-    res.statusCode = status;
-    res.end(JSON.stringify(data));
-  };
-
-  const requestKey = req.headers['x-agent-key'];
-  if (requestKey !== AGENT_SECRET_KEY) {
-    return sendJson(403, { success: false, message: 'Forbidden' });
-  }
-
-  // Правильный парсинг GET-параметров в Node.js
-  const query = url.parse(req.url, true).query;
-  const { id, format, progress_url } = query;
-  
-  const identity = getIdentity(id || progress_url || 'unknown');
-
-  const headers = {
-    'User-Agent': identity.userAgent,
-    'Accept': 'application/json, text/plain, */*',
-    'Accept-Language': identity.acceptLanguage,
-    'Origin': identity.donor.origin,
-    'Referer': identity.donor.referer,
-    'Sec-Fetch-Dest': 'empty',
-    'Sec-Fetch-Mode': 'cors',
-    'Sec-Fetch-Site': 'cross-site'
+    try {
+      res.setHeader('Content-Type', 'application/json');
+      res.statusCode = status;
+      res.end(JSON.stringify(data));
+    } catch (e) {}
   };
 
   try {
+    const requestKey = req.headers['x-agent-key'];
+    if (requestKey !== AGENT_SECRET_KEY) {
+      return sendJson(403, { success: false, message: 'Forbidden' });
+    }
+
+    const query = url.parse(req.url || '', true).query || {};
+    const { id, format, progress_url } = query;
+    
+    const identity = getIdentity(id || progress_url || 'unknown');
+
+    const fetchHeaders = {
+      'User-Agent': identity.userAgent,
+      'Accept': 'application/json, text/plain, */*',
+      'Accept-Language': identity.acceptLanguage,
+      'Origin': identity.donor.origin,
+      'Referer': identity.donor.referer,
+      'Sec-Fetch-Dest': 'empty',
+      'Sec-Fetch-Mode': 'cors',
+      'Sec-Fetch-Site': 'cross-site'
+    };
+
+    // Вспомогательная функция безопасного парсинга ответа от донора
+    const fetchSafeJson = async (targetUrl) => {
+      const resp = await fetch(targetUrl, { headers: fetchHeaders });
+      const text = await resp.text();
+      try {
+        return { ok: true, json: JSON.parse(text) };
+      } catch (err) {
+        // Донор прислал HTML (например, страницу блокировки Cloudflare) вместо JSON
+        return { ok: false, raw: text.substring(0, 200) };
+      }
+    };
+
     if (progress_url) {
-      const response = await fetch(progress_url, { headers });
-      const data = await response.json();
+      const result = await fetchSafeJson(progress_url);
+      if (!result.ok) {
+        return sendJson(200, { success: false, status: 'error', message: 'Donor blocked request (HTML response)' });
+      }
+
+      const data = result.json;
       const statusText = data?.text?.toLowerCase() || '';
 
       if (data?.download_url && data.download_url !== "") {
         return sendJson(200, { success: true, status: 'finished', download_url: data.download_url });
       } else if (statusText === 'error' || (data?.success === 1 && !data?.download_url)) {
-        return sendJson(200, { success: false, status: 'error', message: 'Donor Error' });
+        return sendJson(200, { success: false, status: 'error', message: 'Donor Error: ' + (data?.text || '') });
       }
       return sendJson(200, { success: true, status: 'processing', progress: data?.progress || 0 });
     }
@@ -76,9 +92,12 @@ module.exports = async function handler(req, res) {
     const youtubeUrl = `https://www.youtube.com/watch?v=${id}`;
     const apiUrl = `https://p.savenow.to/api/v2/download?format=${format}&url=${encodeURIComponent(youtubeUrl)}&apikey=${API_KEY}`;
 
-    const response = await fetch(apiUrl, { headers });
-    const data = await response.json();
+    const result = await fetchSafeJson(apiUrl);
+    if (!result.ok) {
+      return sendJson(200, { success: false, message: 'Init blocked by donor (HTML response)' });
+    }
 
+    const data = result.json;
     if (!data || !data.success || !data.id || !data.progress_url) {
       return sendJson(200, { success: false, message: 'Init Error', details: data });
     }
@@ -86,6 +105,7 @@ module.exports = async function handler(req, res) {
     return sendJson(200, { success: true, status: 'started', progress_url: data.progress_url });
 
   } catch (error) {
-    return sendJson(500, { success: false, message: error.message });
+    // Перехват абсолютно любых непредвиденных сбоев
+    return sendJson(500, { success: false, message: 'Exception: ' + error.message });
   }
 };
