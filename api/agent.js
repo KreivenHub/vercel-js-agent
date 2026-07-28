@@ -23,8 +23,8 @@ function getIdentity(seedString) {
   };
 }
 
-export default async function handler(req, res) {
-  // Проверка секретного ключа
+// ИСПРАВЛЕНО: Стандартный экспорт CommonJS для Vercel Node.js
+module.exports = async function handler(req, res) {
   const requestKey = req.headers['x-agent-key'];
   if (requestKey !== AGENT_SECRET_KEY) {
     return res.status(403).json({ success: false, message: 'Forbidden' });
@@ -45,7 +45,6 @@ export default async function handler(req, res) {
   };
 
   try {
-    // 1. Опрос прогресса
     if (progress_url) {
       const response = await fetch(progress_url, { headers });
       const data = await response.json();
@@ -63,7 +62,6 @@ export default async function handler(req, res) {
       return res.status(200).json({ status: 'alive' });
     }
 
-    // 2. Старт задачи
     const youtubeUrl = `https://www.youtube.com/watch?v=${id}`;
     const apiUrl = `https://p.savenow.to/api/v2/download?format=${format}&url=${encodeURIComponent(youtubeUrl)}&apikey=${API_KEY}`;
 
@@ -79,4 +77,4 @@ export default async function handler(req, res) {
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
-}
+};
